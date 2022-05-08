@@ -38,8 +38,8 @@ impl DiskManager {
         Ok(page)
     }
 
-    pub fn write(&mut self, page_id: PageID, page: &Page) -> StorageResult<()> {
-        self.file.seek(SeekFrom::Start(page_id.offset() as u64))?;
+    pub fn write(&mut self, page: &Page) -> StorageResult<()> {
+        self.file.seek(SeekFrom::Start(page.id.offset() as u64))?;
         self.file.write_all(&page.data)?;
 
         Ok(())
@@ -103,24 +103,22 @@ mod tests {
         let mut manager = DiskManager::new(p);
 
         // 1回目のwrite & read
-        let mut write_page1 = Page::default();
+        let mut write_page1 = manager.allocate_page().unwrap();
         write_page1.data[..5].copy_from_slice(b"test1");
 
-        let id1 = manager.allocate_page().unwrap().id;
-        manager.write(id1, &write_page1).unwrap();
+        manager.write(&write_page1).unwrap();
 
-        let read_page1 = manager.read(id1).unwrap();
+        let read_page1 = manager.read(write_page1.id).unwrap();
 
         assert_eq!(write_page1.data, read_page1.data);
 
         // 2回目のwrite & read
-        let mut write_page2 = Page::default();
+        let mut write_page2 = manager.allocate_page().unwrap();
         write_page2.data[..5].copy_from_slice(b"test2");
 
-        let id2 = manager.allocate_page().unwrap().id;
-        manager.write(id2, &write_page2).unwrap();
+        manager.write(&write_page2).unwrap();
 
-        let read_page2 = manager.read(id2).unwrap();
+        let read_page2 = manager.read(write_page2.id).unwrap();
 
         assert_eq!(write_page1.data, read_page1.data);
         assert_eq!(write_page2.data, read_page2.data);
