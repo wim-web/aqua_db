@@ -45,12 +45,15 @@ impl DiskManager {
         Ok(())
     }
 
-    pub fn allocate_page(&mut self) -> StorageResult<PageID> {
+    pub fn allocate_page(&mut self) -> StorageResult<Page> {
         let next_index = self.next_index;
 
         self.next_index += 1;
 
-        Ok(PageID(next_index))
+        Ok(Page {
+            id: PageID(next_index),
+            ..Default::default()
+        })
     }
 }
 
@@ -103,7 +106,7 @@ mod tests {
         let mut write_page1 = Page::default();
         write_page1.data[..5].copy_from_slice(b"test1");
 
-        let id1 = manager.allocate_page().unwrap();
+        let id1 = manager.allocate_page().unwrap().id;
         manager.write(id1, &write_page1).unwrap();
 
         let read_page1 = manager.read(id1).unwrap();
@@ -114,7 +117,7 @@ mod tests {
         let mut write_page2 = Page::default();
         write_page2.data[..5].copy_from_slice(b"test2");
 
-        let id2 = manager.allocate_page().unwrap();
+        let id2 = manager.allocate_page().unwrap().id;
         manager.write(id2, &write_page2).unwrap();
 
         let read_page2 = manager.read(id2).unwrap();
