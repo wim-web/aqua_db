@@ -53,6 +53,13 @@ where
             None => bucket.push((key, value)),
         }
     }
+
+    pub fn remove(&mut self, key: K) {
+        let index = self.calculate_bucket(&key);
+        let mut bucket = self.buckets[index].lock().unwrap();
+
+        bucket.retain(|(k, _)| *k != key);
+    }
 }
 
 mod tests {
@@ -89,5 +96,17 @@ mod tests {
 
         table.put(3, "value_3");
         assert_eq!(table.get(3).unwrap(), "value_3");
+    }
+
+    #[test]
+    fn hash_table_remove() {
+        let mut table = HashTable::new(10);
+
+        table.put(2, "value_2");
+        table.put(3, "value_3");
+        table.remove(3);
+
+        assert!(table.get(3).is_none());
+        assert!(table.get(2).is_some());
     }
 }
