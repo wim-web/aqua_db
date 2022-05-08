@@ -42,7 +42,10 @@ where
     }
 
     pub fn read(&self, page_id: PageID) -> StorageResult<Page> {
-        let mut page = Page::default();
+        let mut page = Page {
+            id: page_id,
+            ..Default::default()
+        };
         let mut file = self.open()?;
 
         file.seek(SeekFrom::Start(page_id.offset() as u64))?;
@@ -70,18 +73,20 @@ where
 
 #[derive(Debug, Clone, Copy)]
 pub struct Page {
+    pub id: PageID,
     pub data: [u8; PAGE_SIZE],
 }
 
 impl Page {
-    pub fn new(data: [u8; PAGE_SIZE]) -> Self {
-        Self { data }
+    pub fn new(id: PageID, data: [u8; PAGE_SIZE]) -> Self {
+        Self { id, data }
     }
 }
 
 impl Default for Page {
     fn default() -> Self {
         Self {
+            id: PageID(0),
             data: [0_u8; PAGE_SIZE],
         }
     }
