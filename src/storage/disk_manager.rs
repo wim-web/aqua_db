@@ -7,57 +7,40 @@ use std::{
 
 pub const PAGE_SIZE: usize = 4096;
 
-pub struct DiskManager<T>
-where
-    T: AsRef<Path>,
-{
-    file_path: T,
+pub struct DiskManager {
+    file: File,
     next_index: usize,
 }
 
-impl<T> DiskManager<T>
-where
-    T: AsRef<Path>,
-{
-    pub fn new(file_path: T) -> Self {
-        let mut manager = DiskManager {
-            file_path,
-            next_index: 0,
-        };
-
-        let f = manager.open().unwrap();
-        manager.next_index = (f.metadata().unwrap().len() / PAGE_SIZE as u64) as usize;
-
-        manager
-    }
-
-    fn open(&self) -> StorageResult<File> {
-        let f = OpenOptions::new()
+impl DiskManager {
+    pub fn new(file_path: impl AsRef<Path>) -> Self {
+        let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(&self.file_path)?;
+            .open(&file_path)
+            .unwrap();
 
-        Ok(f)
+        let next_index = (file.metadata().unwrap().len() / PAGE_SIZE as u64) as usize;
+
+        DiskManager { file, next_index }
     }
 
-    pub fn read(&self, page_id: PageID) -> StorageResult<Page> {
+    pub fn read(&mut self, page_id: PageID) -> StorageResult<Page> {
         let mut page = Page {
             id: page_id,
             ..Default::default()
         };
-        let mut file = self.open()?;
 
-        file.seek(SeekFrom::Start(page_id.offset() as u64))?;
-        file.read_exact(&mut page.data)?;
+        self.file.seek(SeekFrom::Start(page_id.offset() as u64))?;
+        self.file.read_exact(&mut page.data)?;
 
         Ok(page)
     }
 
-    pub fn write(&self, page_id: PageID, page: &Page) -> StorageResult<()> {
-        let mut file = self.open()?;
-        file.seek(SeekFrom::Start(page_id.offset() as u64))?;
-        file.write_all(&page.data)?;
+    pub fn write(&mut self, page_id: PageID, page: &Page) -> StorageResult<()> {
+        self.file.seek(SeekFrom::Start(page_id.offset() as u64))?;
+        self.file.write_all(&page.data)?;
 
         Ok(())
     }
