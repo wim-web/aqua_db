@@ -79,7 +79,7 @@ impl Default for Page {
 }
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug, Copy)]
-pub struct PageID(usize);
+pub struct PageID(pub usize);
 
 impl PageID {
     pub fn value(&self) -> usize {
