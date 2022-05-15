@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use super::descriptors::DescriptorID;
 
 pub trait Replacer {
@@ -7,7 +9,7 @@ pub trait Replacer {
 }
 
 pub struct LruReplacer {
-    cache: lru::LruCache<DescriptorID, bool>,
+    cache: Mutex<lru::LruCache<DescriptorID, bool>>,
 }
 
 impl LruReplacer {
@@ -15,22 +17,24 @@ impl LruReplacer {
         assert!(size > 0);
 
         Self {
-            cache: lru::LruCache::new(size),
+            cache: Mutex::new(lru::LruCache::new(size)),
         }
     }
 }
 
 impl Replacer for LruReplacer {
     fn victim(&mut self) -> Option<DescriptorID> {
-        self.cache.pop_lru().map(|(id, _)| id)
+        self.cache
+            .lock()
+            .map_or(None, |mut c| c.pop_lru().map(|(id, _)| id))
     }
 
     fn pin(&mut self, descriptor_id: DescriptorID) {
-        self.cache.pop(&descriptor_id);
+        self.cache.lock().unwrap().pop(&descriptor_id);
     }
 
     fn unpin(&mut self, descriptor_id: DescriptorID) {
-        self.cache.put(descriptor_id, true);
+        self.cache.lock().unwrap().put(descriptor_id, true);
     }
 }
 
