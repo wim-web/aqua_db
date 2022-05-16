@@ -2,15 +2,51 @@ use std::{
     collections::hash_map::DefaultHasher,
     fmt::Debug,
     hash::{Hash, Hasher},
-    sync::Mutex,
+    sync::{Arc, RwLock},
 };
+
+pub type BucketLockRef<K, V> = Arc<RwLock<Bucket<K, V>>>;
+
+struct Bucket<K, V>
+where
+    K: Hash + PartialEq + Copy,
+    V: Copy,
+{
+    items: Vec<(K, V)>,
+}
+
+impl<K, V> Bucket<K, V>
+where
+    K: Hash + PartialEq + Copy,
+    V: Copy,
+{
+    fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+
+    fn get(&self, key: K) -> Option<V> {
+        self.items.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
+    }
+
+    fn put(&mut self, key: K, value: V) {
+        match self.items.iter().enumerate().find(|&(_, (k, _))| *k == key) {
+            Some((index, _)) => self.items[index] = (key, value),
+            None => self.items.push((key, value)),
+        }
+    }
+
+    pub fn remove(&mut self, key: K) {
+        self.items.retain(|(k, _)| *k != key);
+    }
+}
 
 pub struct HashTable<K, V>
 where
     K: Hash + PartialEq + Copy,
+    V: Copy,
 {
     size: usize,
-    buckets: Vec<Mutex<Vec<(K, V)>>>,
+    buckets: Vec<BucketLockRef<K, V>>,
 }
 
 impl<K, V> HashTable<K, V>
@@ -24,9 +60,7 @@ where
         let mut buckets = Vec::with_capacity(size);
         (0..size)
             .into_iter()
-            .for_each(|_| buckets.push(Mutex::new(Vec::new())));
-
-        let hasher = DefaultHasher::new();
+            .for_each(|_| buckets.push(Arc::new(RwLock::new(Bucket::new()))));
 
         Self { size, buckets }
     }
@@ -37,28 +71,9 @@ where
         hasher.finish() as usize % self.size
     }
 
-    pub fn get(&mut self, key: K) -> Option<V> {
+    pub fn get_bucket_locker(&mut self, key: K) -> Option<BucketLockRef<K, V>> {
         let index = self.calculate_bucket(&key);
-        let bucket = self.buckets[index].lock().unwrap();
-
-        bucket.iter().find(|&&(k, _)| k == key).map(|(k, v)| *v)
-    }
-
-    pub fn put(&mut self, key: K, value: V) {
-        let index = self.calculate_bucket(&key);
-        let mut bucket = self.buckets[index].lock().unwrap();
-
-        match bucket.iter().enumerate().find(|&(_, (k, _))| *k == key) {
-            Some((index, _)) => bucket[index] = (key, value),
-            None => bucket.push((key, value)),
-        }
-    }
-
-    pub fn remove(&mut self, key: K) {
-        let index = self.calculate_bucket(&key);
-        let mut bucket = self.buckets[index].lock().unwrap();
-
-        bucket.retain(|(k, _)| *k != key);
+        self.buckets.get(index).map(|item| Arc::clone(&item))
     }
 }
 
@@ -72,41 +87,43 @@ mod tests {
     }
 
     #[test]
+    fn bucket_test() {
+        let mut bucket = Bucket::new();
+
+        let key = "test_key";
+
+        assert!(bucket.get(key).is_none());
+
+        let value = "test_value";
+        bucket.put(key, value);
+
+        assert_eq!(value, bucket.get(key).unwrap());
+
+        let value = "test_value1";
+        bucket.put(key, value);
+
+        assert_eq!(value, bucket.get(key).unwrap());
+
+        bucket.remove(key);
+
+        assert!(bucket.get(key).is_none());
+    }
+    #[test]
     fn hash_table_1_size() {
         let mut table = HashTable::new(1);
 
-        table.put(1, "value_1");
-        assert_eq!(table.get(1).unwrap(), "value_1");
+        let key = "test_key";
+        let value = "test_value";
 
-        table.put(1, "value_2");
-        assert_eq!(table.get(1).unwrap(), "value_2");
+        let bucket_locker = table.get_bucket_locker(key).unwrap();
 
-        assert_eq!(table.buckets[0].lock().unwrap().len(), 1);
-    }
-
-    #[test]
-    fn hash_table_some_size() {
-        let mut table = HashTable::new(10);
-
-        table.put(2, "value_1");
-        assert_eq!(table.get(2).unwrap(), "value_1");
-
-        table.put(1, "value_2");
-        assert_eq!(table.get(1).unwrap(), "value_2");
-
-        table.put(3, "value_3");
-        assert_eq!(table.get(3).unwrap(), "value_3");
-    }
-
-    #[test]
-    fn hash_table_remove() {
-        let mut table = HashTable::new(10);
-
-        table.put(2, "value_2");
-        table.put(3, "value_3");
-        table.remove(3);
-
-        assert!(table.get(3).is_none());
-        assert!(table.get(2).is_some());
+        {
+            let mut write_bucket = bucket_locker.write().unwrap();
+            write_bucket.put(key, value);
+        }
+        {
+            let read_bucket = bucket_locker.read().unwrap();
+            assert_eq!(value, read_bucket.get(key).unwrap());
+        }
     }
 }
