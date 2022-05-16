@@ -4,8 +4,8 @@ use super::disk_manager::Page;
 
 #[derive(Debug)]
 pub struct Buffer {
-    id: BufferPoolID,
-    page: Page,
+    pub id: BufferPoolID,
+    pub page: Page,
 }
 
 impl Buffer {
@@ -43,7 +43,7 @@ impl BufferPool {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct BufferPoolID(pub usize);
 
 impl BufferPoolID {

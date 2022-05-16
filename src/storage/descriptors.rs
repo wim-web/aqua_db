@@ -1,26 +1,11 @@
-use std::{
-    ops::{Index, IndexMut},
-    sync::Mutex,
-};
+use std::sync::{Arc, RwLock};
 
 use super::buffer_pool::BufferPoolID;
 
+type DescriptorLockRef = Arc<RwLock<Descriptor>>;
+
 pub struct Descriptors {
-    pub items: Vec<Mutex<Descriptor>>,
-}
-
-impl Index<DescriptorID> for Descriptors {
-    type Output = Mutex<Descriptor>;
-
-    fn index(&self, index: DescriptorID) -> &Self::Output {
-        &self.items[index.value()]
-    }
-}
-
-impl IndexMut<DescriptorID> for Descriptors {
-    fn index_mut(&mut self, index: DescriptorID) -> &mut Self::Output {
-        &mut self.items[index.value()]
-    }
+    pub items: Vec<DescriptorLockRef>,
 }
 
 impl Descriptors {
@@ -30,13 +15,17 @@ impl Descriptors {
         let mut items = Vec::with_capacity(size);
 
         for n in 0..size {
-            items.push(Mutex::new(Descriptor::new(
-                DescriptorID(n),
-                BufferPoolID(n),
-            )));
+            let buffer_pool_id = BufferPoolID(n);
+            let id = DescriptorID::from_buf_pool_id(buffer_pool_id);
+
+            items.push(Arc::new(RwLock::new(Descriptor::new(id, buffer_pool_id))));
         }
 
         Self { items }
+    }
+
+    pub fn get(&self, id: DescriptorID) -> DescriptorLockRef {
+        Arc::clone(&self.items[id.value()])
     }
 }
 
@@ -44,16 +33,16 @@ impl Descriptors {
 pub struct Descriptor {
     pub id: DescriptorID,
     pub dirty: bool,
-    pub pool_id: BufferPoolID,
+    pub buffer_pool_id: BufferPoolID,
     pin_count: usize,
 }
 
 impl Descriptor {
-    pub fn new(id: DescriptorID, pool_id: BufferPoolID) -> Self {
+    pub fn new(id: DescriptorID, buffer_pool_id: BufferPoolID) -> Self {
         Self {
             id,
             dirty: false,
-            pool_id,
+            buffer_pool_id,
             pin_count: 0,
         }
     }
@@ -69,6 +58,11 @@ impl Descriptor {
     pub fn pinned(&self) -> bool {
         self.pin_count > 0
     }
+
+    pub fn reset(&mut self) {
+        self.dirty = false;
+        self.pin_count = 0;
+    }
 }
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
@@ -77,6 +71,10 @@ pub struct DescriptorID(pub usize);
 impl DescriptorID {
     fn value(&self) -> usize {
         self.0
+    }
+
+    pub fn from_buf_pool_id(buffer_pool_id: BufferPoolID) -> Self {
+        Self(buffer_pool_id.value())
     }
 }
 
