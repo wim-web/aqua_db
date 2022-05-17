@@ -7,7 +7,7 @@ use std::{
 
 pub type BucketLockRef<K, V> = Arc<RwLock<Bucket<K, V>>>;
 
-struct Bucket<K, V>
+pub struct Bucket<K, V>
 where
     K: Hash + PartialEq + Copy,
     V: Copy,
@@ -24,11 +24,11 @@ where
         Self { items: Vec::new() }
     }
 
-    fn get(&self, key: K) -> Option<V> {
+    pub fn get(&self, key: K) -> Option<V> {
         self.items.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
     }
 
-    fn put(&mut self, key: K, value: V) {
+    pub fn put(&mut self, key: K, value: V) {
         match self.items.iter().enumerate().find(|&(_, (k, _))| *k == key) {
             Some((index, _)) => self.items[index] = (key, value),
             None => self.items.push((key, value)),
