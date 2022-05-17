@@ -7,6 +7,7 @@ use std::{
 
 pub type BucketLockRef<K, V> = Arc<RwLock<Bucket<K, V>>>;
 
+#[derive(Debug)]
 pub struct Bucket<K, V>
 where
     K: Hash + PartialEq + Copy,
@@ -46,7 +47,7 @@ where
     V: Copy,
 {
     size: usize,
-    buckets: Vec<BucketLockRef<K, V>>,
+    pub buckets: Vec<BucketLockRef<K, V>>,
 }
 
 impl<K, V> HashTable<K, V>
@@ -63,6 +64,10 @@ where
             .for_each(|_| buckets.push(Arc::new(RwLock::new(Bucket::new()))));
 
         Self { size, buckets }
+    }
+
+    pub fn same_bucket(&mut self, key1: K, key2: K) -> bool {
+        self.calculate_bucket(&key1) == self.calculate_bucket(&key2)
     }
 
     fn calculate_bucket(&mut self, key: &K) -> usize {
