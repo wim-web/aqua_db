@@ -61,11 +61,16 @@ impl DiskManager {
 pub struct Page {
     pub id: PageID,
     pub data: [u8; PAGE_SIZE],
+    pub size: usize,
 }
 
 impl Page {
     pub fn new(id: PageID, data: [u8; PAGE_SIZE]) -> Self {
-        Self { id, data }
+        Self {
+            id,
+            data,
+            size: PAGE_SIZE,
+        }
     }
 }
 
@@ -74,6 +79,7 @@ impl Default for Page {
         Self {
             id: PageID(0),
             data: [0_u8; PAGE_SIZE],
+            size: PAGE_SIZE,
         }
     }
 }
