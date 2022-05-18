@@ -12,6 +12,13 @@ impl Buffer {
     pub fn new(id: BufferPoolID, page: Page) -> Self {
         Self { id, page }
     }
+
+    pub fn write(&mut self, data: &[u8]) {
+        let len = data.len();
+        assert!(len <= self.page.size);
+
+        self.page.data[..len].copy_from_slice(data);
+    }
 }
 
 #[derive(Debug)]
@@ -58,7 +65,7 @@ mod tests {
 
     use crate::storage::disk_manager::{Page, PageID};
 
-    use super::{BufferPool, BufferPoolID};
+    use super::{Buffer, BufferPool, BufferPoolID};
 
     #[test]
     #[should_panic]
@@ -82,5 +89,14 @@ mod tests {
         let buffer = buffer_locked.read().unwrap();
 
         assert_eq!(buffer.page.id, page.id);
+    }
+
+    #[test]
+    fn buffer_write() {
+        let mut buffer = Buffer::new(BufferPoolID(0), Page::default());
+
+        buffer.write(b"test");
+
+        assert_eq!(buffer.page.data[..4], b"test"[..]);
     }
 }
