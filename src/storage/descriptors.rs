@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use super::buffer_pool::BufferPoolID;
+use super::buffer_pool::{Buffer, BufferPoolID};
 
 type DescriptorLockRef = Arc<RwLock<Descriptor>>;
 

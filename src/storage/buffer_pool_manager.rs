@@ -47,26 +47,51 @@ impl BufferPoolManager<LruReplacer> {
         }
     }
 
-    fn load_to_victim_buffer(&mut self, p_id: PageID) -> StorageResult<Arc<RwLock<Buffer>>> {
+    fn victim_descriptor(
+        &mut self,
+        descriptor_id: DescriptorID,
+    ) -> StorageResult<Arc<RwLock<Buffer>>> {
+        let descriptor_locker = self.descriptors.get(descriptor_id);
+        let mut descriptor = descriptor_locker.write().unwrap();
+        let buffer_locker = self.buffer_pool.get(descriptor.buffer_pool_id);
+
+        if descriptor.dirty {
+            let page = &buffer_locker.write().unwrap().page;
+            self.disk_manager.write(page)?;
+        }
+
+        descriptor.reset();
+        descriptor.pin();
+
+        Ok(buffer_locker)
+    }
+
+    fn load_page_to_buffer_pool(
+        &mut self,
+        p_id: PageID,
+        buffer_pool_id: BufferPoolID,
+    ) -> StorageResult<Arc<RwLock<Buffer>>> {
+        let page = self.disk_manager.read(p_id)?;
+        self.buffer_pool.put(buffer_pool_id, page);
+        Ok(self.buffer_pool.get(buffer_pool_id))
+    }
+
+    fn load_page_from_storage_to_buffer_pool(
+        &mut self,
+        p_id: PageID,
+    ) -> StorageResult<Arc<RwLock<Buffer>>> {
         let victim_descriptor_id = self
             .replacer
             .victim()
             .ok_or_else(|| anyhow!("not found victim descriptor id"))?;
 
-        let descriptor_locker = self.descriptors.get(victim_descriptor_id);
+        let buffer_locker = self.victim_descriptor(victim_descriptor_id)?;
         let (victim_page_id, buffer_pool_id) = {
-            let mut descriptor = descriptor_locker.write().unwrap();
-            let buffer_locker = self.buffer_pool.get(descriptor.buffer_pool_id);
-            if descriptor.dirty {
-                let page = &buffer_locker.write().unwrap().page;
-                self.disk_manager.write(page)?;
-                descriptor.reset();
-            }
             let buffer = buffer_locker.read().unwrap();
-            (buffer.page.id, descriptor.buffer_pool_id)
+            (buffer.page.id, buffer.id)
         };
 
-        let buffer = if self.page_table.same_bucket(victim_page_id, p_id) {
+        let buffer_locker = if self.page_table.same_bucket(victim_page_id, p_id) {
             let bucket_locker = self
                 .page_table
                 .get_bucket_locker(victim_page_id)
@@ -74,12 +99,10 @@ impl BufferPoolManager<LruReplacer> {
 
             let mut bucket = bucket_locker.write().unwrap();
 
-            bucket.put(p_id, victim_descriptor_id);
             bucket.remove(victim_page_id);
+            bucket.put(p_id, victim_descriptor_id);
 
-            let page = self.disk_manager.read(p_id)?;
-            self.buffer_pool.put(buffer_pool_id, page);
-            self.buffer_pool.get(buffer_pool_id)
+            self.load_page_to_buffer_pool(p_id, buffer_pool_id)?
         } else {
             let old_bucket_locker = self
                 .page_table
@@ -95,15 +118,13 @@ impl BufferPoolManager<LruReplacer> {
 
             let mut new_bucket = new_bucket_locker.write().unwrap();
 
-            new_bucket.put(p_id, victim_descriptor_id);
             old_bucket.remove(victim_page_id);
+            new_bucket.put(p_id, victim_descriptor_id);
 
-            let page = self.disk_manager.read(p_id)?;
-            self.buffer_pool.put(buffer_pool_id, page);
-            self.buffer_pool.get(buffer_pool_id)
+            self.load_page_to_buffer_pool(p_id, buffer_pool_id)?
         };
 
-        Ok(buffer)
+        Ok(buffer_locker)
     }
 
     pub fn mark_dirty(&mut self, buffer_pool_id: BufferPoolID) -> StorageResult<()> {
@@ -117,62 +138,7 @@ impl BufferPoolManager<LruReplacer> {
 
     pub fn new_buffer(&mut self) -> StorageResult<Arc<RwLock<Buffer>>> {
         let new_page = self.disk_manager.allocate_page()?;
-
-        let victim_descriptor_id = self
-            .replacer
-            .victim()
-            .ok_or_else(|| anyhow!("not found victim descriptor id"))?;
-
-        let descriptor_locker = self.descriptors.get(victim_descriptor_id);
-        let (victim_page_id, buffer_pool_id) = {
-            let mut descriptor = descriptor_locker.write().unwrap();
-            let buffer_locker = self.buffer_pool.get(descriptor.buffer_pool_id);
-            if descriptor.dirty {
-                let page = &buffer_locker.write().unwrap().page;
-                self.disk_manager.write(page)?;
-            }
-            descriptor.reset();
-            descriptor.pin();
-            let buffer = buffer_locker.read().unwrap();
-            (buffer.page.id, descriptor.buffer_pool_id)
-        };
-
-        let buffer = if self.page_table.same_bucket(victim_page_id, new_page.id) {
-            let bucket_locker = self
-                .page_table
-                .get_bucket_locker(victim_page_id)
-                .ok_or_else(|| anyhow!("cant get bucket"))?;
-
-            let mut bucket = bucket_locker.write().unwrap();
-
-            bucket.remove(victim_page_id);
-            bucket.put(new_page.id, victim_descriptor_id);
-
-            self.buffer_pool.put(buffer_pool_id, new_page);
-            self.buffer_pool.get(buffer_pool_id)
-        } else {
-            let old_bucket_locker = self
-                .page_table
-                .get_bucket_locker(victim_page_id)
-                .ok_or_else(|| anyhow!("cant get old bucket"))?;
-
-            let mut old_bucket = old_bucket_locker.write().unwrap();
-
-            let new_bucket_locker = self
-                .page_table
-                .get_bucket_locker(new_page.id)
-                .ok_or_else(|| anyhow!("cant get new bucket"))?;
-
-            let mut new_bucket = new_bucket_locker.write().unwrap();
-
-            old_bucket.remove(victim_page_id);
-            new_bucket.put(new_page.id, victim_descriptor_id);
-
-            self.buffer_pool.put(buffer_pool_id, new_page);
-            self.buffer_pool.get(buffer_pool_id)
-        };
-
-        Ok(buffer)
+        self.load_page_from_storage_to_buffer_pool(new_page.id)
     }
 
     pub fn fetch_buffer(&mut self, p_id: PageID) -> StorageResult<Arc<RwLock<Buffer>>> {
@@ -188,7 +154,7 @@ impl BufferPoolManager<LruReplacer> {
             return Ok(self.buffer_pool.get(descriptor.buffer_pool_id));
         };
 
-        self.load_to_victim_buffer(p_id)
+        self.load_page_from_storage_to_buffer_pool(p_id)
     }
 
     pub fn unpin_buffer(&mut self, p_id: PageID) -> StorageResult<()> {
@@ -232,6 +198,7 @@ mod tests {
     use tempfile::NamedTempFile;
 
     use crate::storage::{
+        descriptors::DescriptorID,
         disk_manager::{PageID, PAGE_SIZE},
         replacer::Replacer,
     };
@@ -276,6 +243,9 @@ mod tests {
             buffer.write(b"test");
             manager.unpin_buffer(buffer.page.id).unwrap();
             manager.mark_dirty(buffer.id).unwrap();
+            let descriptor_id = DescriptorID::from_buf_pool_id(buffer.id);
+            let descriptor_arc = manager.descriptors.get(descriptor_id);
+            let mut descriptor = descriptor_arc.write().unwrap();
             buffer.page.id
         };
 
