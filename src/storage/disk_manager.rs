@@ -47,13 +47,16 @@ impl DiskManager {
 
     pub fn allocate_page(&mut self) -> StorageResult<Page> {
         let next_index = self.next_index;
-
         self.next_index += 1;
 
-        Ok(Page {
+        let page = Page {
             id: PageID(next_index),
             ..Default::default()
-        })
+        };
+
+        self.write(&page)?;
+
+        Ok(page)
     }
 }
 
