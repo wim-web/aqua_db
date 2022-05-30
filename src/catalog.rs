@@ -1,13 +1,13 @@
+use crate::storage::tuple::*;
+use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use serde_derive::{Deserialize, Serialize};
-
 #[derive(Serialize, Deserialize, Debug)]
-struct Catalog {
+pub struct Catalog {
     #[serde(rename = "schemas")]
-    schemas: Vec<Schema>,
+    pub schemas: Vec<Schema>,
     #[serde(skip)]
-    map: HashMap<String, usize>,
+    pub map: HashMap<String, usize>,
 }
 
 impl Catalog {
@@ -28,37 +28,47 @@ impl Catalog {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Schema {
-    table: Table,
+pub struct Schema {
+    pub table: Table,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Table {
-    name: String,
-    columns: Vec<Column>,
+pub struct Table {
+    pub name: String,
+    pub columns: Vec<Column>,
+}
+
+impl Table {
+    pub fn tuple_size(&self) -> usize {
+        TUPLE_HEADER_SIZE
+            + self
+                .columns
+                .iter()
+                .fold(0, |acc, c| match c.types.as_str() {
+                    "int" => acc + 4,
+                    "text" => acc + 256,
+                    _ => acc,
+                })
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Column {
-    types: ColumnType,
-    name: String,
+pub struct Column {
+    pub types: String,
+    pub name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-enum ColumnType {
-    #[serde(rename = "int")]
-    Int,
-    #[serde(rename = "text")]
-    Text,
-    #[serde(rename = "bool")]
-    Bool,
+pub enum AttributeType {
+    Int(i32),
+    Text(String),
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::catalog::ColumnType;
+    use std::vec;
 
-    use super::Catalog;
+    use super::*;
 
     const json: &str = r#"{
         "schemas": [
@@ -73,10 +83,6 @@ mod tests {
                         {
                             "types": "text",
                             "name": "column_text"
-                        },
-                        {
-                            "types": "bool",
-                            "name": "column_bool"
                         }
                     ]
                 }
@@ -85,9 +91,10 @@ mod tests {
     }"#;
 
     #[test]
-    fn catalog_deserialize() {
+    fn catalog_from_json() {
         let c = Catalog::from_json(json);
 
+        // assert table num
         assert_eq!(1, c.schemas.len());
 
         let schema = c.get_schema_by_table_name("table1").unwrap();
@@ -95,13 +102,20 @@ mod tests {
         assert_eq!("table1", schema.table.name);
 
         for column in &schema.table.columns {
-            let c_name = match column.types {
-                ColumnType::Int => "column_int",
-                ColumnType::Text => "column_text",
-                ColumnType::Bool => "column_bool",
+            match column.types.as_str() {
+                "int" => assert_eq!(column.name, "column_int"),
+                "text" => assert_eq!(column.name, "column_text"),
+                s => panic!("{} is undefined types", s),
             };
-
-            assert_eq!(column.name, c_name);
         }
+    }
+
+    #[test]
+    fn catalog_tuple_size() {
+        let c = Catalog::from_json(json);
+        let schema = c.get_schema_by_table_name("table1").unwrap();
+        let tuple_size = schema.table.tuple_size();
+
+        assert_eq!(tuple_size, 268)
     }
 }
