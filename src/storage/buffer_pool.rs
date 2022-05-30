@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use super::disk_manager::Page;
+use super::page::*;
 
 #[derive(Debug)]
 pub struct Buffer {
@@ -11,13 +11,6 @@ pub struct Buffer {
 impl Buffer {
     pub fn new(id: BufferPoolID, page: Page) -> Self {
         Self { id, page }
-    }
-
-    pub fn write(&mut self, data: &[u8]) {
-        let len = data.len();
-        assert!(len <= self.page.size);
-
-        self.page.data[..len].copy_from_slice(data);
     }
 }
 
@@ -63,7 +56,7 @@ impl BufferPoolID {
 mod tests {
     use std::{borrow::BorrowMut, sync::Arc};
 
-    use crate::storage::disk_manager::{Page, PageID};
+    use crate::storage::page::*;
 
     use super::{Buffer, BufferPool, BufferPoolID};
 
@@ -78,8 +71,9 @@ mod tests {
         let mut pool = BufferPool::new(1);
         let id = BufferPoolID(0);
 
+        let page_id = PageID(100);
         let page = Page {
-            id: PageID(100),
+            id: page_id,
             ..Default::default()
         };
 
@@ -88,15 +82,6 @@ mod tests {
         let buffer_locked = pool.get(id);
         let buffer = buffer_locked.read().unwrap();
 
-        assert_eq!(buffer.page.id, page.id);
-    }
-
-    #[test]
-    fn buffer_write() {
-        let mut buffer = Buffer::new(BufferPoolID(0), Page::default());
-
-        buffer.write(b"test");
-
-        assert_eq!(buffer.page.data[..4], b"test"[..]);
+        assert_eq!(buffer.page.id, page_id);
     }
 }

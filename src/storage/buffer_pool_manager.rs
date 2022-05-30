@@ -1,15 +1,15 @@
-use std::{
-    path::Path,
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
 use anyhow::{anyhow, Ok};
 
+use crate::catalog::Catalog;
+
 use super::{
     buffer_pool::{Buffer, BufferPool, BufferPoolID},
-    descriptors::{Descriptor, DescriptorID, Descriptors},
-    disk_manager::{DiskManager, Page, PageID},
+    descriptors::{DescriptorID, Descriptors},
+    disk_manager::DiskManager,
     hash_table,
+    page::*,
     replacer::{LruReplacer, Replacer},
     StorageResult,
 };
@@ -26,9 +26,9 @@ where
 }
 
 impl BufferPoolManager<LruReplacer> {
-    pub fn new(pool_size: usize, file_path: impl AsRef<Path>) -> Self {
+    pub fn new(pool_size: usize, base_path: String, catalog: Catalog) -> Self {
         let mut replacer = LruReplacer::new(pool_size);
-        let disk_manager = DiskManager::new(file_path);
+        let disk_manager = DiskManager::new(base_path, catalog);
         let buffer_pool = BufferPool::new(pool_size);
         let page_table = hash_table::HashTable::new(pool_size);
         let descriptors = Descriptors::new(pool_size);
@@ -50,6 +50,7 @@ impl BufferPoolManager<LruReplacer> {
     fn victim_descriptor(
         &mut self,
         descriptor_id: DescriptorID,
+        table_name: &str,
     ) -> StorageResult<Arc<RwLock<Buffer>>> {
         let descriptor_locker = self.descriptors.get(descriptor_id);
         let mut descriptor = descriptor_locker.write().unwrap();
@@ -57,7 +58,7 @@ impl BufferPoolManager<LruReplacer> {
 
         if descriptor.dirty {
             let page = &buffer_locker.write().unwrap().page;
-            self.disk_manager.write(page)?;
+            self.disk_manager.write(page, table_name)?;
         }
 
         descriptor.reset();
@@ -70,8 +71,9 @@ impl BufferPoolManager<LruReplacer> {
         &mut self,
         p_id: PageID,
         buffer_pool_id: BufferPoolID,
+        table_name: &str,
     ) -> StorageResult<Arc<RwLock<Buffer>>> {
-        let page = self.disk_manager.read(p_id)?;
+        let page = self.disk_manager.read(p_id, table_name)?;
         self.buffer_pool.put(buffer_pool_id, page);
         Ok(self.buffer_pool.get(buffer_pool_id))
     }
@@ -79,13 +81,14 @@ impl BufferPoolManager<LruReplacer> {
     fn load_page_from_storage_to_buffer_pool(
         &mut self,
         p_id: PageID,
+        table_name: &str,
     ) -> StorageResult<Arc<RwLock<Buffer>>> {
         let victim_descriptor_id = self
             .replacer
             .victim()
             .ok_or_else(|| anyhow!("not found victim descriptor id"))?;
 
-        let buffer_locker = self.victim_descriptor(victim_descriptor_id)?;
+        let buffer_locker = self.victim_descriptor(victim_descriptor_id, table_name)?;
         let (victim_page_id, buffer_pool_id) = {
             let buffer = buffer_locker.read().unwrap();
             (buffer.page.id, buffer.id)
@@ -102,7 +105,7 @@ impl BufferPoolManager<LruReplacer> {
             bucket.remove(victim_page_id);
             bucket.put(p_id, victim_descriptor_id);
 
-            self.load_page_to_buffer_pool(p_id, buffer_pool_id)?
+            self.load_page_to_buffer_pool(p_id, buffer_pool_id, table_name)?
         } else {
             let old_bucket_locker = self
                 .page_table
@@ -121,7 +124,7 @@ impl BufferPoolManager<LruReplacer> {
             old_bucket.remove(victim_page_id);
             new_bucket.put(p_id, victim_descriptor_id);
 
-            self.load_page_to_buffer_pool(p_id, buffer_pool_id)?
+            self.load_page_to_buffer_pool(p_id, buffer_pool_id, table_name)?
         };
 
         Ok(buffer_locker)
@@ -136,12 +139,16 @@ impl BufferPoolManager<LruReplacer> {
         Ok(())
     }
 
-    pub fn new_buffer(&mut self) -> StorageResult<Arc<RwLock<Buffer>>> {
-        let new_page = self.disk_manager.allocate_page()?;
-        self.load_page_from_storage_to_buffer_pool(new_page.id)
+    pub fn new_buffer(&mut self, table_name: &str) -> StorageResult<Arc<RwLock<Buffer>>> {
+        let new_page = self.disk_manager.allocate_page(table_name)?;
+        self.load_page_from_storage_to_buffer_pool(new_page.id, table_name)
     }
 
-    pub fn fetch_buffer(&mut self, p_id: PageID) -> StorageResult<Arc<RwLock<Buffer>>> {
+    pub fn fetch_buffer(
+        &mut self,
+        p_id: PageID,
+        table_name: &str,
+    ) -> StorageResult<Arc<RwLock<Buffer>>> {
         let bucket_locker = self
             .page_table
             .get_bucket_locker(p_id)
@@ -154,7 +161,7 @@ impl BufferPoolManager<LruReplacer> {
             return Ok(self.buffer_pool.get(descriptor.buffer_pool_id));
         };
 
-        self.load_page_from_storage_to_buffer_pool(p_id)
+        self.load_page_from_storage_to_buffer_pool(p_id, table_name)
     }
 
     pub fn unpin_buffer(&mut self, p_id: PageID) -> StorageResult<()> {
@@ -175,7 +182,7 @@ impl BufferPoolManager<LruReplacer> {
         Ok(())
     }
 
-    pub fn flush_buffer(&mut self, p_id: PageID) -> StorageResult<()> {
+    pub fn flush_buffer(&mut self, p_id: PageID, table_name: &str) -> StorageResult<()> {
         let bucket_locker = self
             .page_table
             .get_bucket_locker(p_id)
@@ -186,7 +193,7 @@ impl BufferPoolManager<LruReplacer> {
             let descriptor = descriptor_arc.write().unwrap();
             let buffer = self.buffer_pool.get(descriptor.buffer_pool_id);
             let page = &buffer.write().unwrap().page;
-            self.disk_manager.write(page).unwrap();
+            self.disk_manager.write(page, table_name).unwrap();
         }
 
         Ok(())
@@ -195,70 +202,116 @@ impl BufferPoolManager<LruReplacer> {
 
 #[cfg(test)]
 mod tests {
+    use std::env::temp_dir;
+
     use tempfile::NamedTempFile;
 
-    use crate::storage::{
-        descriptors::DescriptorID,
-        disk_manager::{PageID, PAGE_SIZE},
-        replacer::Replacer,
+    use crate::{
+        catalog::Catalog,
+        storage::{
+            descriptors::DescriptorID,
+            page::{PageID, PAGE_SIZE},
+            replacer::Replacer,
+            tuple::Tuple,
+        },
     };
 
     use super::BufferPoolManager;
 
+    const json: &str = r#"{
+        "schemas": [
+            {
+                "table": {
+                    "name": "table1",
+                    "columns": [
+                        {
+                            "types": "int",
+                            "name": "column_int"
+                        },
+                        {
+                            "types": "text",
+                            "name": "column_text"
+                        }
+                    ]
+                }
+            }
+        ]
+    }"#;
+
     #[test]
     #[should_panic]
     fn buffer_pool_manager_new_test_no_size() {
-        let _manager = BufferPoolManager::new(0, "dummy");
+        let c = Catalog::from_json("");
+        let _manager = BufferPoolManager::new(0, "dummy".to_string(), c);
     }
 
     #[test]
     fn buffer_pool_manager_write_and_flush() {
-        let (_, p) = NamedTempFile::new().unwrap().into_parts();
-        let mut manager = BufferPoolManager::new(1, p);
+        let temp_dir = temp_dir();
+        let catalog = Catalog::from_json(json);
+        let mut manager =
+            BufferPoolManager::new(1, temp_dir.to_str().unwrap().to_string(), catalog);
+
+        let table_name = "table1";
 
         let page_id = {
-            let buffer_locker = manager.new_buffer().unwrap();
+            let buffer_locker = manager.new_buffer(table_name).unwrap();
             let mut buffer = buffer_locker.write().unwrap();
-            buffer.write(b"test");
+            let mut tuple = Tuple::new();
+            tuple.add_attribute("column_int", crate::catalog::AttributeType::Int(888));
+            tuple.add_attribute(
+                "column_text",
+                crate::catalog::AttributeType::Text("test".to_string()),
+            );
+            buffer.page.add_tuple(tuple);
             manager.unpin_buffer(buffer.page.id).unwrap();
             buffer.page.id
         };
 
-        manager.flush_buffer(page_id).unwrap();
+        manager.flush_buffer(page_id, table_name).unwrap();
 
-        let buffer_locker = manager.fetch_buffer(page_id).unwrap();
+        let buffer_locker = manager.fetch_buffer(page_id, table_name).unwrap();
         let buffer = buffer_locker.read().unwrap();
 
-        assert_eq!(buffer.page.data[..4], b"test"[..]);
+        assert_eq!(buffer.page.header.tuple_count, 1);
     }
 
     #[test]
     fn buffer_pool_manager_victim() {
-        let (_, p) = NamedTempFile::new().unwrap().into_parts();
-        let mut manager = BufferPoolManager::new(1, p);
+        let temp_dir = temp_dir();
+        let catalog = Catalog::from_json(json);
+        let mut manager =
+            BufferPoolManager::new(1, temp_dir.to_str().unwrap().to_string(), catalog);
+
+        let table_name = "table1";
 
         let page_id = {
-            let buffer_locker = manager.new_buffer().unwrap();
+            let buffer_locker = manager.new_buffer(table_name).unwrap();
             let mut buffer = buffer_locker.write().unwrap();
-            buffer.write(b"test");
+            let mut tuple = Tuple::new();
+            tuple.add_attribute("column_int", crate::catalog::AttributeType::Int(888));
+            tuple.add_attribute(
+                "column_text",
+                crate::catalog::AttributeType::Text("test".to_string()),
+            );
+            buffer.page.add_tuple(tuple);
             manager.unpin_buffer(buffer.page.id).unwrap();
             manager.mark_dirty(buffer.id).unwrap();
-            let descriptor_id = DescriptorID::from_buf_pool_id(buffer.id);
-            let descriptor_arc = manager.descriptors.get(descriptor_id);
-            let mut descriptor = descriptor_arc.write().unwrap();
             buffer.page.id
         };
 
         // 明示的にflushしなくても、new_buffer時のvictimでdiskにwriteされる
         {
-            let buffer_locker = manager.new_buffer().unwrap();
+            let buffer_locker = manager.new_buffer(table_name).unwrap();
             let buffer = buffer_locker.read().unwrap();
             manager.unpin_buffer(buffer.page.id).unwrap();
         }
 
-        let buffer_locker = manager.fetch_buffer(page_id).unwrap();
+        let buffer_locker = manager.fetch_buffer(page_id, table_name).unwrap();
         let buffer = buffer_locker.read().unwrap();
 
-        assert_eq!(buffer.page.data[..4], b"test"[..]);
+        assert_eq!(buffer.page.header.tuple_count, 1);
+
+        println!("{:?}", buffer.page);
     }
 }

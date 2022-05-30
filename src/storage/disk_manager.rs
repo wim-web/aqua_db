@@ -1,135 +1,140 @@
+use crate::catalog::Catalog;
+
+use super::page::*;
 use super::StorageResult;
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
-    path::Path,
 };
 
-pub const PAGE_SIZE: usize = 4096;
-
 pub struct DiskManager {
-    file: File,
-    next_index: usize,
+    catalog: Catalog,
+    base_path: String,
 }
 
 impl DiskManager {
-    pub fn new(file_path: impl AsRef<Path>) -> Self {
+    pub fn new(base_path: String, catalog: Catalog) -> Self {
+        DiskManager { base_path, catalog }
+    }
+
+    fn open(&self, table_name: &str) -> StorageResult<File> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(&file_path)
-            .unwrap();
+            .open(format!("{}/{}", self.base_path, table_name))?;
 
-        let next_index = (file.metadata().unwrap().len() / PAGE_SIZE as u64) as usize;
-
-        DiskManager { file, next_index }
+        Ok(file)
     }
 
-    pub fn read(&mut self, page_id: PageID) -> StorageResult<Page> {
+    pub fn read(&mut self, page_id: PageID, table_name: &str) -> StorageResult<Page> {
+        let mut file = self.open(table_name)?;
+
         let mut page = Page {
             id: page_id,
             ..Default::default()
         };
 
-        self.file.seek(SeekFrom::Start(page_id.offset() as u64))?;
-        self.file.read_exact(&mut page.data)?;
+        let mut data = [0_u8; PAGE_SIZE];
+
+        file.seek(SeekFrom::Start(page_id.offset() as u64))?;
+        file.read_exact(&mut data)?;
+
+        let schema = self
+            .catalog
+            .get_schema_by_table_name(table_name)
+            .ok_or_else(|| anyhow::anyhow!(format!("{} not found in catalog", table_name)))?;
+
+        page.fill(&data, schema);
 
         Ok(page)
     }
 
-    pub fn write(&mut self, page: &Page) -> StorageResult<()> {
-        self.file.seek(SeekFrom::Start(page.id.offset() as u64))?;
-        self.file.write_all(&page.data)?;
+    pub fn write(&mut self, page: &Page, table_name: &str) -> StorageResult<()> {
+        let mut file = self.open(table_name)?;
+
+        let schema = self
+            .catalog
+            .get_schema_by_table_name(table_name)
+            .ok_or_else(|| anyhow::anyhow!(format!("{} not found in catalog", table_name)))?;
+
+        file.seek(SeekFrom::Start(page.id.offset() as u64))?;
+        file.write_all(&page.raw(schema))?;
 
         Ok(())
     }
 
-    pub fn allocate_page(&mut self) -> StorageResult<Page> {
-        let next_index = self.next_index;
-        self.next_index += 1;
+    pub fn allocate_page(&mut self, table_name: &str) -> StorageResult<Page> {
+        let file = self.open(table_name)?;
+
+        let offset = (file.metadata().unwrap().len() / PAGE_SIZE as u64) as usize;
 
         let page = Page {
-            id: PageID(next_index),
+            id: PageID(offset),
             ..Default::default()
         };
 
-        self.write(&page)?;
+        self.write(&page, table_name)?;
 
         Ok(page)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Page {
-    pub id: PageID,
-    pub data: [u8; PAGE_SIZE],
-    pub size: usize,
-}
-
-impl Page {
-    pub fn new(id: PageID, data: [u8; PAGE_SIZE]) -> Self {
-        Self {
-            id,
-            data,
-            size: PAGE_SIZE,
-        }
-    }
-}
-
-impl Default for Page {
-    fn default() -> Self {
-        Self {
-            id: PageID(0),
-            data: [0_u8; PAGE_SIZE],
-            size: PAGE_SIZE,
-        }
-    }
-}
-
-#[derive(Hash, PartialEq, Eq, Clone, Debug, Copy)]
-pub struct PageID(pub usize);
-
-impl PageID {
-    pub fn value(&self) -> usize {
-        self.0
-    }
-
-    fn offset(&self) -> usize {
-        PAGE_SIZE * self.0
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use tempfile::NamedTempFile;
+    use crate::{catalog::AttributeType, storage::tuple::Tuple};
 
     use super::*;
+    use tempfile::{tempdir, tempfile, NamedTempFile};
+
+    const json: &str = r#"{
+        "schemas": [
+            {
+                "table": {
+                    "name": "table1",
+                    "columns": [
+                        {
+                            "types": "int",
+                            "name": "column_int"
+                        },
+                        {
+                            "types": "text",
+                            "name": "column_text"
+                        }
+                    ]
+                }
+            }
+        ]
+    }"#;
+
     #[test]
-    fn read_write() {
-        let (_, p) = NamedTempFile::new().unwrap().into_parts();
+    fn disk_read_write() {
+        let temp_dir = tempdir().unwrap();
+        let c = Catalog::from_json(json);
 
-        let mut manager = DiskManager::new(p);
+        let mut manager = DiskManager::new(temp_dir.path().to_str().unwrap().to_string(), c);
 
-        // 1回目のwrite & read
-        let mut write_page1 = manager.allocate_page().unwrap();
-        write_page1.data[..5].copy_from_slice(b"test1");
+        let mut page = manager.allocate_page("table1").unwrap();
+        let mut tuple = Tuple::new();
+        tuple.add_attribute("column_int", AttributeType::Int(999));
+        tuple.add_attribute("column_text", AttributeType::Text("text".to_string()));
+        page.add_tuple(tuple);
 
-        manager.write(&write_page1).unwrap();
+        manager.write(&page, "table1").unwrap();
 
-        let read_page1 = manager.read(write_page1.id).unwrap();
+        let page = manager.read(page.id, "table1").unwrap();
 
-        assert_eq!(write_page1.data, read_page1.data);
+        assert_eq!(1, page.header.tuple_count);
+        let tuple = &page.body[0];
 
-        // 2回目のwrite & read
-        let mut write_page2 = manager.allocate_page().unwrap();
-        write_page2.data[..5].copy_from_slice(b"test2");
+        match &tuple.body.attributes["column_int"] {
+            AttributeType::Int(v) => assert_eq!(999, *v),
+            _ => panic!("strange column_int"),
+        }
 
-        manager.write(&write_page2).unwrap();
-
-        let read_page2 = manager.read(write_page2.id).unwrap();
-
-        assert_eq!(write_page1.data, read_page1.data);
-        assert_eq!(write_page2.data, read_page2.data);
+        match &tuple.body.attributes["column_text"] {
+            AttributeType::Text(v) => assert_eq!(v, "text"),
+            _ => panic!("strange column_text"),
+        }
     }
 }
