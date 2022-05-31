@@ -14,7 +14,7 @@ use super::{
     StorageResult,
 };
 
-struct BufferPoolManager<R>
+pub struct BufferPoolManager<R>
 where
     R: Replacer,
 {
@@ -197,6 +197,10 @@ impl BufferPoolManager<LruReplacer> {
         }
 
         Ok(())
+    }
+
+    pub fn last_page_id(&self, table_name: &str) -> StorageResult<Option<PageID>> {
+        self.disk_manager.last_page_id(table_name)
     }
 }
 

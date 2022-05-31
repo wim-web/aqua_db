@@ -1,3 +1,5 @@
+use anyhow::Ok;
+
 use crate::catalog::Catalog;
 
 use super::page::*;
@@ -77,6 +79,17 @@ impl DiskManager {
         self.write(&page, table_name)?;
 
         Ok(page)
+    }
+
+    pub fn last_page_id(&self, table_name: &str) -> StorageResult<Option<PageID>> {
+        let file = self.open(table_name)?;
+        let page_num = file.metadata()?.len() as usize / PAGE_SIZE;
+
+        if page_num == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(PageID(page_num - 1)))
+        }
     }
 }
 
