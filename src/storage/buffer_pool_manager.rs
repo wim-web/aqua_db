@@ -208,8 +208,6 @@ impl BufferPoolManager<LruReplacer> {
 mod tests {
     use std::env::temp_dir;
 
-    use tempfile::NamedTempFile;
-
     use crate::{
         catalog::Catalog,
         storage::{

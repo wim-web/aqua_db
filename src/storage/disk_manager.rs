@@ -95,10 +95,11 @@ impl DiskManager {
 
 #[cfg(test)]
 mod tests {
+    use std::env::temp_dir;
+
     use crate::{catalog::AttributeType, storage::tuple::Tuple};
 
     use super::*;
-    use tempfile::{tempdir, tempfile, NamedTempFile};
 
     const json: &str = r#"{
         "schemas": [
@@ -122,10 +123,10 @@ mod tests {
 
     #[test]
     fn disk_read_write() {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = temp_dir();
         let c = Catalog::from_json(json);
 
-        let mut manager = DiskManager::new(temp_dir.path().to_str().unwrap().to_string(), c);
+        let mut manager = DiskManager::new(temp_dir.to_str().unwrap().to_string(), c);
 
         let mut page = manager.allocate_page("table1").unwrap();
         let mut tuple = Tuple::new();
