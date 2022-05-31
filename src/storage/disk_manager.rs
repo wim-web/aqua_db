@@ -105,7 +105,7 @@ mod tests {
         "schemas": [
             {
                 "table": {
-                    "name": "table1",
+                    "name": "disk_manager",
                     "columns": [
                         {
                             "types": "int",
@@ -128,15 +128,15 @@ mod tests {
 
         let mut manager = DiskManager::new(temp_dir.to_str().unwrap().to_string(), c);
 
-        let mut page = manager.allocate_page("table1").unwrap();
+        let mut page = manager.allocate_page("disk_manager").unwrap();
         let mut tuple = Tuple::new();
         tuple.add_attribute("column_int", AttributeType::Int(999));
         tuple.add_attribute("column_text", AttributeType::Text("text".to_string()));
         page.add_tuple(tuple);
 
-        manager.write(&page, "table1").unwrap();
+        manager.write(&page, "disk_manager").unwrap();
 
-        let page = manager.read(page.id, "table1").unwrap();
+        let page = manager.read(page.id, "disk_manager").unwrap();
 
         assert_eq!(1, page.header.tuple_count);
         let tuple = &page.body[0];

@@ -216,7 +216,7 @@ mod tests {
         "schemas": [
             {
                 "table": {
-                    "name": "table1",
+                    "name": "buffer_pool_test",
                     "columns": [
                         {
                             "types": "int",
@@ -246,7 +246,7 @@ mod tests {
         let mut manager =
             BufferPoolManager::new(1, temp_dir.to_str().unwrap().to_string(), catalog);
 
-        let table_name = "table1";
+        let table_name = "buffer_pool_test";
 
         let page_id = {
             let buffer_locker = manager.new_buffer(table_name).unwrap();
@@ -277,7 +277,7 @@ mod tests {
         let mut manager =
             BufferPoolManager::new(1, temp_dir.to_str().unwrap().to_string(), catalog);
 
-        let table_name = "table1";
+        let table_name = "buffer_pool_test";
 
         let page_id = {
             let buffer_locker = manager.new_buffer(table_name).unwrap();
