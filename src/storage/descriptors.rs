@@ -1,6 +1,5 @@
+use super::buffer_pool::BufferPoolID;
 use std::sync::{Arc, RwLock};
-
-use super::buffer_pool::{Buffer, BufferPoolID};
 
 type DescriptorLockRef = Arc<RwLock<Descriptor>>;
 
@@ -78,10 +77,9 @@ impl DescriptorID {
     }
 }
 
+#[cfg(test)]
 mod tests {
-    use crate::storage::buffer_pool::BufferPoolID;
-
-    use super::{Descriptor, DescriptorID, Descriptors};
+    use super::*;
 
     #[test]
     #[should_panic]

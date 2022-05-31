@@ -66,11 +66,10 @@ pub enum AttributeType {
 
 #[cfg(test)]
 mod tests {
-    use std::vec;
 
     use super::*;
 
-    const json: &str = r#"{
+    const JSON: &str = r#"{
         "schemas": [
             {
                 "table": {
@@ -92,7 +91,7 @@ mod tests {
 
     #[test]
     fn catalog_from_json() {
-        let c = Catalog::from_json(json);
+        let c = Catalog::from_json(JSON);
 
         // assert table num
         assert_eq!(1, c.schemas.len());
@@ -112,7 +111,7 @@ mod tests {
 
     #[test]
     fn catalog_tuple_size() {
-        let c = Catalog::from_json(json);
+        let c = Catalog::from_json(JSON);
         let schema = c.get_schema_by_table_name("table1").unwrap();
         let tuple_size = schema.table.tuple_size();
 

@@ -119,7 +119,7 @@ impl PageHeader {
 mod tests {
     use super::*;
 
-    const json: &str = r#"{
+    const JSON: &str = r#"{
         "schemas": [
             {
                 "table": {
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn page_serde() {
-        let c = Catalog::from_json(json);
+        let c = Catalog::from_json(JSON);
         let schema = c.get_schema_by_table_name("table1").unwrap();
 
         let mut page = Page::default();

@@ -18,7 +18,7 @@ impl Tuple {
         }
     }
 
-    pub fn fill(&mut self, raw: &[u8], columns: &Vec<Column>) {
+    pub fn fill(&mut self, raw: &[u8], columns: &[Column]) {
         self.header.fill(&raw[..TUPLE_HEADER_SIZE]);
         self.body.fill(&raw[TUPLE_HEADER_SIZE..], columns);
     }
@@ -27,7 +27,7 @@ impl Tuple {
         self.body.attributes.insert(name.to_string(), types);
     }
 
-    pub fn raw(&self, columns: &Vec<Column>) -> Vec<u8> {
+    pub fn raw(&self, columns: &[Column]) -> Vec<u8> {
         let mut b = vec![];
         b.append(&mut self.header.raw());
         b.append(&mut self.body.raw(columns));
@@ -64,7 +64,7 @@ pub struct TupleBody {
 }
 
 impl TupleBody {
-    fn fill(&mut self, raw: &[u8], columns: &Vec<Column>) {
+    fn fill(&mut self, raw: &[u8], columns: &[Column]) {
         let mut offset = 0;
         for c in columns {
             let t = match c.types.as_str() {
@@ -92,7 +92,7 @@ impl TupleBody {
         }
     }
 
-    fn raw(&self, columns: &Vec<Column>) -> Vec<u8> {
+    fn raw(&self, columns: &[Column]) -> Vec<u8> {
         let mut bytes = vec![];
 
         for c in columns {
@@ -101,11 +101,11 @@ impl TupleBody {
                 .get(&c.name)
                 .and_then(|t| match c.types.as_str() {
                     "int" => match &t {
-                        AttributeType::Int(v) => Some(t),
+                        AttributeType::Int(_) => Some(t),
                         _ => None,
                     },
                     "text" => match &t {
-                        AttributeType::Text(v) => Some(t),
+                        AttributeType::Text(_) => Some(t),
                         _ => None,
                     },
                     _ => None,

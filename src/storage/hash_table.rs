@@ -78,10 +78,11 @@ where
 
     pub fn get_bucket_locker(&mut self, key: K) -> Option<BucketLockRef<K, V>> {
         let index = self.calculate_bucket(&key);
-        self.buckets.get(index).map(|item| Arc::clone(&item))
+        self.buckets.get(index).map(Arc::clone)
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

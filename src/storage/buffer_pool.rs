@@ -54,11 +54,8 @@ impl BufferPoolID {
 
 #[cfg(test)]
 mod tests {
-    use std::{borrow::BorrowMut, sync::Arc};
-
+    use super::{BufferPool, BufferPoolID};
     use crate::storage::page::*;
-
-    use super::{Buffer, BufferPool, BufferPoolID};
 
     #[test]
     #[should_panic]

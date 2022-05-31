@@ -101,7 +101,7 @@ mod tests {
 
     use super::*;
 
-    const json: &str = r#"{
+    const JSON: &str = r#"{
         "schemas": [
             {
                 "table": {
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn disk_read_write() {
         let temp_dir = temp_dir();
-        let c = Catalog::from_json(json);
+        let c = Catalog::from_json(JSON);
 
         let mut manager = DiskManager::new(temp_dir.to_str().unwrap().to_string(), c);
 

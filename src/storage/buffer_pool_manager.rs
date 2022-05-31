@@ -208,19 +208,11 @@ impl BufferPoolManager<LruReplacer> {
 mod tests {
     use std::env::temp_dir;
 
-    use crate::{
-        catalog::Catalog,
-        storage::{
-            descriptors::DescriptorID,
-            page::{PageID, PAGE_SIZE},
-            replacer::Replacer,
-            tuple::Tuple,
-        },
-    };
+    use crate::{catalog::Catalog, storage::tuple::Tuple};
 
     use super::BufferPoolManager;
 
-    const json: &str = r#"{
+    const JSON: &str = r#"{
         "schemas": [
             {
                 "table": {
@@ -250,7 +242,7 @@ mod tests {
     #[test]
     fn buffer_pool_manager_write_and_flush() {
         let temp_dir = temp_dir();
-        let catalog = Catalog::from_json(json);
+        let catalog = Catalog::from_json(JSON);
         let mut manager =
             BufferPoolManager::new(1, temp_dir.to_str().unwrap().to_string(), catalog);
 
@@ -281,7 +273,7 @@ mod tests {
     #[test]
     fn buffer_pool_manager_victim() {
         let temp_dir = temp_dir();
-        let catalog = Catalog::from_json(json);
+        let catalog = Catalog::from_json(JSON);
         let mut manager =
             BufferPoolManager::new(1, temp_dir.to_str().unwrap().to_string(), catalog);
 
@@ -313,7 +305,5 @@ mod tests {
         let buffer = buffer_locker.read().unwrap();
 
         assert_eq!(buffer.page.header.tuple_count, 1);
-
-        println!("{:?}", buffer.page);
     }
 }
