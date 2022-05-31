@@ -9,7 +9,7 @@ pub struct Page {
     pub id: PageID,
     pub header: PageHeader,
     pub body: Vec<Tuple>,
-    pub size: usize,
+    pub tuple_size: usize,
 }
 
 impl Page {
@@ -23,7 +23,7 @@ impl Page {
         let table = &schema.table;
         let tuple_size = table.tuple_size();
 
-        for _ in (0..self.header.tuple_count) {
+        for _ in 0..self.header.tuple_count {
             let mut tuple = Tuple::default();
             tuple.fill(&raw[offset..(offset + tuple_size)], &table.columns);
             v.push(tuple);
@@ -31,6 +31,8 @@ impl Page {
         }
 
         self.body = v;
+
+        self.tuple_size = schema.table.tuple_size();
     }
 
     pub fn add_tuple(&mut self, tuple: Tuple) {
@@ -52,13 +54,25 @@ impl Page {
 
         b
     }
+
+    pub fn usage_size(&self) -> usize {
+        PAGE_HEADER_SIZE + self.tuple_size * self.header.tuple_count as usize
+    }
+
+    pub fn free_size(&self) -> usize {
+        PAGE_SIZE - self.usage_size()
+    }
+
+    pub fn can_add_tuple(&self) -> bool {
+        self.free_size() > self.tuple_size
+    }
 }
 
 impl Default for Page {
     fn default() -> Self {
         Self {
             id: PageID(0),
-            size: PAGE_SIZE,
+            tuple_size: 0,
             header: PageHeader { tuple_count: 0 },
             body: Vec::new(),
         }
