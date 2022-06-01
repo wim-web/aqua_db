@@ -1,6 +1,6 @@
 use std::result;
 
-mod buffer_pool;
+pub mod buffer_pool;
 pub mod buffer_pool_manager;
 mod descriptors;
 pub mod disk_manager;

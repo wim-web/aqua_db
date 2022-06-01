@@ -58,7 +58,7 @@ pub struct Column {
     pub name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum AttributeType {
     Int(i32),
     Text(String),
