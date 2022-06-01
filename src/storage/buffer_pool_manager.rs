@@ -46,7 +46,9 @@ impl BufferPoolManager<LruReplacer> {
             descriptors,
         }
     }
+}
 
+impl<R: Replacer> BufferPoolManager<R> {
     fn victim_descriptor(
         &mut self,
         descriptor_id: DescriptorID,
