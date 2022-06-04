@@ -10,7 +10,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-struct Executor<T>
+pub struct Executor<T>
 where
     T: Replacer,
 {
