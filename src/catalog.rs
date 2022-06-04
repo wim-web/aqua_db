@@ -25,6 +25,10 @@ impl Catalog {
         let index = *self.map.get(table_name)?;
         Some(&self.schemas[index])
     }
+
+    pub fn exist_table(&self, table_name: &str) -> bool {
+        self.map.get(table_name).is_some()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
