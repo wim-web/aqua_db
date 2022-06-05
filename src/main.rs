@@ -37,8 +37,12 @@ fn main() -> Result<(), anyhow::Error> {
         };
 
         let response = format!("HTTP/1.1 200 OK\r\n\r\n{}", response_text);
-
         writer.write_all(response.as_bytes())?;
+
+        if response_text == "exit" {
+            exit_handler(&mut executor)?;
+            break;
+        }
     }
 
     Ok(())
@@ -94,7 +98,13 @@ fn read_handler(
             executor.insert(&attributes, &table_name)?;
             "success".to_string()
         }
+        ExecuteType::Exit => "exit".to_string(),
     };
 
     Ok(response_text)
+}
+
+fn exit_handler(executor: &mut Executor<LruReplacer>) -> Result<(), anyhow::Error> {
+    executor.all_flush()?;
+    Ok(())
 }

@@ -204,6 +204,19 @@ impl<R: Replacer> BufferPoolManager<R> {
     pub fn last_page_id(&self, table_name: &str) -> StorageResult<Option<PageID>> {
         self.disk_manager.last_page_id(table_name)
     }
+
+    pub fn dirty_buffers(&self) -> Vec<Arc<RwLock<Buffer>>> {
+        let mut v = Vec::new();
+        for d in &self.descriptors.items {
+            let d_ = d.read().unwrap();
+            if d_.dirty {
+                let b = self.buffer_pool.get(d_.buffer_pool_id);
+                v.push(Arc::clone(&b));
+            }
+        }
+
+        v
+    }
 }
 
 #[cfg(test)]

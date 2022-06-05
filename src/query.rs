@@ -10,6 +10,7 @@ pub struct Parser<'a> {
 pub enum ExecuteType {
     Select(SelectInput),
     Insert(InsertInput),
+    Exit,
 }
 
 #[derive(PartialEq, Debug)]
@@ -42,6 +43,7 @@ impl<'a> Parser<'a> {
         match splitted[0] {
             "select" => self.parse_select(&splitted),
             "insert" => self.parse_insert(&splitted),
+            "exit" => Ok(ExecuteType::Exit),
             t => Err(anyhow::anyhow!("not expected {}", t)),
         }
     }
@@ -192,6 +194,17 @@ mod tests {
                 attributes
             })
         );
+    }
+
+    #[test]
+    fn query_parse_exit() {
+        let catalog = Catalog::from_json(JSON);
+        let p = Parser::new(&catalog);
+        let query = "exit;";
+
+        let e_type = p.parse(query).unwrap();
+
+        assert_eq!(e_type, ExecuteType::Exit);
     }
 
     #[test]

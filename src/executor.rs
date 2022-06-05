@@ -98,6 +98,17 @@ impl<T: Replacer> Executor<T> {
 
         Ok(())
     }
+
+    pub fn all_flush(&mut self) -> Result<(), anyhow::Error> {
+        for b in self.buffer_pool_manager.dirty_buffers() {
+            let page_id = {
+                let b = b.read().unwrap();
+                b.page.id
+            };
+            self.buffer_pool_manager.flush_buffer(page_id, "test")?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
