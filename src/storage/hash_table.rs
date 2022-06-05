@@ -10,7 +10,7 @@ pub type BucketLockRef<K, V> = Arc<RwLock<Bucket<K, V>>>;
 #[derive(Debug)]
 pub struct Bucket<K, V>
 where
-    K: Hash + PartialEq + Copy,
+    K: Hash + PartialEq,
     V: Copy,
 {
     items: Vec<(K, V)>,
@@ -18,7 +18,7 @@ where
 
 impl<K, V> Bucket<K, V>
 where
-    K: Hash + PartialEq + Copy,
+    K: Hash + PartialEq + Debug,
     V: Copy,
 {
     fn new() -> Self {
@@ -43,7 +43,7 @@ where
 
 pub struct HashTable<K, V>
 where
-    K: Hash + PartialEq + Copy,
+    K: Hash + PartialEq,
     V: Copy,
 {
     size: usize,
@@ -52,7 +52,7 @@ where
 
 impl<K, V> HashTable<K, V>
 where
-    K: Hash + PartialEq + Copy + Debug,
+    K: Hash + PartialEq + Debug,
     V: Copy,
 {
     pub fn new(size: usize) -> Self {
@@ -66,8 +66,8 @@ where
         Self { size, buckets }
     }
 
-    pub fn same_bucket(&mut self, key1: K, key2: K) -> bool {
-        self.calculate_bucket(&key1) == self.calculate_bucket(&key2)
+    pub fn same_bucket(&mut self, key1: &K, key2: &K) -> bool {
+        self.calculate_bucket(key1) == self.calculate_bucket(key2)
     }
 
     fn calculate_bucket(&mut self, key: &K) -> usize {
@@ -76,8 +76,8 @@ where
         hasher.finish() as usize % self.size
     }
 
-    pub fn get_bucket_locker(&mut self, key: K) -> Option<BucketLockRef<K, V>> {
-        let index = self.calculate_bucket(&key);
+    pub fn get_bucket_locker(&mut self, key: &K) -> Option<BucketLockRef<K, V>> {
+        let index = self.calculate_bucket(key);
         self.buckets.get(index).map(Arc::clone)
     }
 }
@@ -121,7 +121,7 @@ mod tests {
         let key = "test_key";
         let value = "test_value";
 
-        let bucket_locker = table.get_bucket_locker(key).unwrap();
+        let bucket_locker = table.get_bucket_locker(&key).unwrap();
 
         {
             let mut write_bucket = bucket_locker.write().unwrap();

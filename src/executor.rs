@@ -40,7 +40,7 @@ impl<T: Replacer> Executor<T> {
                 if can_add_tuple {
                     b
                 } else {
-                    self.buffer_pool_manager.unpin_buffer(p_id)?;
+                    self.buffer_pool_manager.unpin_buffer(p_id, table_name)?;
                     self.buffer_pool_manager.new_buffer(table_name)?
                 }
             }
@@ -68,7 +68,9 @@ impl<T: Replacer> Executor<T> {
 
             b.page.add_tuple(t);
             self.buffer_pool_manager.mark_dirty(b.id)?;
-            self.buffer_pool_manager.unpin_buffer(b.page.id).unwrap();
+            self.buffer_pool_manager
+                .unpin_buffer(b.page.id, table_name)
+                .unwrap();
         }
 
         Ok(())
@@ -93,7 +95,9 @@ impl<T: Replacer> Executor<T> {
             for t in &b.page.body {
                 records.push(t.body.attributes.clone());
             }
-            self.buffer_pool_manager.unpin_buffer(b.page.id).unwrap();
+            self.buffer_pool_manager
+                .unpin_buffer(b.page.id, table_name)
+                .unwrap();
         }
 
         Ok(())

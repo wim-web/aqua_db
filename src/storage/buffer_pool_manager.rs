@@ -14,6 +14,21 @@ use super::{
     StorageResult,
 };
 
+#[derive(Hash, PartialEq, Debug)]
+struct Key {
+    page_id: PageID,
+    table_name: String,
+}
+
+impl Key {
+    fn new(page_id: PageID, table_name: String) -> Self {
+        Self {
+            page_id,
+            table_name,
+        }
+    }
+}
+
 pub struct BufferPoolManager<R>
 where
     R: Replacer,
@@ -21,7 +36,7 @@ where
     replacer: R,
     disk_manager: DiskManager,
     buffer_pool: BufferPool,
-    page_table: hash_table::HashTable<PageID, DescriptorID>,
+    page_table: hash_table::HashTable<Key, DescriptorID>,
     descriptors: Descriptors,
 }
 
@@ -96,35 +111,38 @@ impl<R: Replacer> BufferPoolManager<R> {
             (buffer.page.id, buffer.id)
         };
 
-        let buffer_locker = if self.page_table.same_bucket(victim_page_id, p_id) {
+        let victim_key = Key::new(victim_page_id, table_name.to_string());
+        let target_key = Key::new(p_id, table_name.to_string());
+
+        let buffer_locker = if self.page_table.same_bucket(&victim_key, &target_key) {
             let bucket_locker = self
                 .page_table
-                .get_bucket_locker(victim_page_id)
+                .get_bucket_locker(&victim_key)
                 .ok_or_else(|| anyhow!("cant get bucket"))?;
 
             let mut bucket = bucket_locker.write().unwrap();
 
-            bucket.remove(victim_page_id);
-            bucket.put(p_id, victim_descriptor_id);
+            bucket.remove(victim_key);
+            bucket.put(target_key, victim_descriptor_id);
 
             self.load_page_to_buffer_pool(p_id, buffer_pool_id, table_name)?
         } else {
             let old_bucket_locker = self
                 .page_table
-                .get_bucket_locker(victim_page_id)
+                .get_bucket_locker(&victim_key)
                 .ok_or_else(|| anyhow!("cant get old bucket"))?;
 
             let mut old_bucket = old_bucket_locker.write().unwrap();
 
             let new_bucket_locker = self
                 .page_table
-                .get_bucket_locker(p_id)
+                .get_bucket_locker(&target_key)
                 .ok_or_else(|| anyhow!("cant get new bucket"))?;
 
             let mut new_bucket = new_bucket_locker.write().unwrap();
 
-            old_bucket.remove(victim_page_id);
-            new_bucket.put(p_id, victim_descriptor_id);
+            old_bucket.remove(victim_key);
+            new_bucket.put(target_key, victim_descriptor_id);
 
             self.load_page_to_buffer_pool(p_id, buffer_pool_id, table_name)?
         };
@@ -151,12 +169,13 @@ impl<R: Replacer> BufferPoolManager<R> {
         p_id: PageID,
         table_name: &str,
     ) -> StorageResult<Arc<RwLock<Buffer>>> {
+        let key = Key::new(p_id, table_name.to_string());
         let bucket_locker = self
             .page_table
-            .get_bucket_locker(p_id)
+            .get_bucket_locker(&key)
             .ok_or_else(|| anyhow!("cant get bucket"))?;
 
-        if let Some(d_id) = bucket_locker.read().unwrap().get(p_id) {
+        if let Some(d_id) = bucket_locker.read().unwrap().get(key) {
             let descriptor_arc = self.descriptors.get(d_id);
             let mut descriptor = descriptor_arc.write().unwrap();
             descriptor.pin();
@@ -166,13 +185,14 @@ impl<R: Replacer> BufferPoolManager<R> {
         self.load_page_from_storage_to_buffer_pool(p_id, table_name)
     }
 
-    pub fn unpin_buffer(&mut self, p_id: PageID) -> StorageResult<()> {
+    pub fn unpin_buffer(&mut self, p_id: PageID, table_name: &str) -> StorageResult<()> {
+        let key = Key::new(p_id, table_name.to_string());
         let bucket_locker = self
             .page_table
-            .get_bucket_locker(p_id)
+            .get_bucket_locker(&key)
             .ok_or_else(|| anyhow!("cant get bucket"))?;
 
-        if let Some(descriptor_id) = bucket_locker.read().unwrap().get(p_id) {
+        if let Some(descriptor_id) = bucket_locker.read().unwrap().get(key) {
             let descriptor_arc = self.descriptors.get(descriptor_id);
             let mut descriptor = descriptor_arc.write().unwrap();
             descriptor.unpin();
@@ -185,12 +205,13 @@ impl<R: Replacer> BufferPoolManager<R> {
     }
 
     pub fn flush_buffer(&mut self, p_id: PageID, table_name: &str) -> StorageResult<()> {
+        let key = Key::new(p_id, table_name.to_string());
         let bucket_locker = self
             .page_table
-            .get_bucket_locker(p_id)
+            .get_bucket_locker(&key)
             .ok_or_else(|| anyhow!("cant get bucket"))?;
 
-        if let Some(descriptor_id) = bucket_locker.read().unwrap().get(p_id) {
+        if let Some(descriptor_id) = bucket_locker.read().unwrap().get(key) {
             let descriptor_arc = self.descriptors.get(descriptor_id);
             let descriptor = descriptor_arc.write().unwrap();
             let buffer = self.buffer_pool.get(descriptor.buffer_pool_id);
@@ -273,7 +294,7 @@ mod tests {
                 crate::catalog::AttributeType::Text("test".to_string()),
             );
             buffer.page.add_tuple(tuple);
-            manager.unpin_buffer(buffer.page.id).unwrap();
+            manager.unpin_buffer(buffer.page.id, table_name).unwrap();
             buffer.page.id
         };
 
@@ -304,7 +325,7 @@ mod tests {
                 crate::catalog::AttributeType::Text("test".to_string()),
             );
             buffer.page.add_tuple(tuple);
-            manager.unpin_buffer(buffer.page.id).unwrap();
+            manager.unpin_buffer(buffer.page.id, table_name).unwrap();
             manager.mark_dirty(buffer.id).unwrap();
             buffer.page.id
         };
@@ -313,7 +334,7 @@ mod tests {
         {
             let buffer_locker = manager.new_buffer(table_name).unwrap();
             let buffer = buffer_locker.read().unwrap();
-            manager.unpin_buffer(buffer.page.id).unwrap();
+            manager.unpin_buffer(buffer.page.id, table_name).unwrap();
         }
 
         let buffer_locker = manager.fetch_buffer(page_id, table_name).unwrap();
