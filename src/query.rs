@@ -14,13 +14,13 @@ pub enum ExecuteType {
 
 #[derive(PartialEq, Debug)]
 pub struct SelectInput {
-    table_name: String,
+    pub table_name: String,
 }
 
 #[derive(PartialEq, Debug)]
 pub struct InsertInput {
-    table_name: String,
-    attributes: HashMap<String, AttributeType>,
+    pub table_name: String,
+    pub attributes: HashMap<String, AttributeType>,
 }
 
 impl<'a> Parser<'a> {
