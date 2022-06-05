@@ -20,7 +20,7 @@ fn main() -> Result<(), anyhow::Error> {
     let catalog = Catalog::from_json(&json);
 
     let parser = Parser::new(&catalog);
-    let manager = BufferPoolManager::new(1, "./data".to_string(), catalog.clone());
+    let manager = BufferPoolManager::new(10, "./data".to_string(), catalog.clone());
     let mut executor = Executor::new(manager);
 
     let listener = TcpListener::bind("127.0.0.1:8080")?;

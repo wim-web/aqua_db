@@ -10,12 +10,15 @@ pub struct Page {
     pub header: PageHeader,
     pub body: Vec<Tuple>,
     pub tuple_size: usize,
+    pub table_name: String,
 }
 
 impl Page {
-    pub fn fill(&mut self, raw: &[u8], schema: &Schema) {
+    pub fn fill(&mut self, raw: &[u8], table_name: &str, schema: &Schema) {
         assert!(raw.len() == PAGE_SIZE);
         self.header.fill(&raw[..PAGE_HEADER_SIZE]);
+
+        self.table_name = table_name.to_string();
 
         let mut v: Vec<Tuple> = Vec::with_capacity(self.header.tuple_count as usize);
 
@@ -75,6 +78,7 @@ impl Default for Page {
             tuple_size: 0,
             header: PageHeader { tuple_count: 0 },
             body: Vec::new(),
+            table_name: String::new(),
         }
     }
 }
@@ -155,7 +159,7 @@ mod tests {
         assert_eq!(PAGE_SIZE, page_raw.len());
 
         let mut page = Page::default();
-        page.fill(&page_raw, schema);
+        page.fill(&page_raw, "", schema);
 
         assert_eq!(1, page.header.tuple_count);
         for b in page.body {

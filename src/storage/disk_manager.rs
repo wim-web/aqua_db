@@ -47,7 +47,7 @@ impl DiskManager {
             .get_schema_by_table_name(table_name)
             .ok_or_else(|| anyhow::anyhow!(format!("{} not found in catalog", table_name)))?;
 
-        page.fill(&data, schema);
+        page.fill(&data, table_name, schema);
 
         Ok(page)
     }
@@ -73,6 +73,7 @@ impl DiskManager {
 
         let page = Page {
             id: PageID(offset),
+            table_name: table_name.to_string(),
             ..Default::default()
         };
 

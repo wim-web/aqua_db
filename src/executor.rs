@@ -105,11 +105,11 @@ impl<T: Replacer> Executor<T> {
 
     pub fn all_flush(&mut self) -> Result<(), anyhow::Error> {
         for b in self.buffer_pool_manager.dirty_buffers() {
-            let page_id = {
+            let (id, table_name) = {
                 let b = b.read().unwrap();
-                b.page.id
+                (b.page.id, b.page.table_name.clone())
             };
-            self.buffer_pool_manager.flush_buffer(page_id, "test")?;
+            self.buffer_pool_manager.flush_buffer(id, &table_name)?;
         }
         Ok(())
     }
