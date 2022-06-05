@@ -67,6 +67,7 @@ impl<T: Replacer> Executor<T> {
             }
 
             b.page.add_tuple(t);
+            self.buffer_pool_manager.mark_dirty(b.id)?;
             self.buffer_pool_manager.unpin_buffer(b.page.id).unwrap();
         }
 
