@@ -2,7 +2,7 @@ use crate::storage::tuple::*;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Catalog {
     #[serde(rename = "schemas")]
     pub schemas: Vec<Schema>,
@@ -31,12 +31,12 @@ impl Catalog {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Schema {
     pub table: Table,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Table {
     pub name: String,
     pub columns: Vec<Column>,
@@ -56,7 +56,7 @@ impl Table {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Column {
     pub types: String,
     pub name: String,
