@@ -53,7 +53,7 @@ impl<T: Replacer> Executor<T> {
 
     pub fn insert(
         &mut self,
-        attributes: &HashMap<&str, AttributeType>,
+        attributes: &HashMap<String, AttributeType>,
         table_name: &str,
     ) -> Result<(), anyhow::Error> {
         let b = self.find_writable_buffer(table_name)?;
@@ -136,8 +136,11 @@ mod tests {
         let mut executor = Executor::new(b_manager);
 
         let mut attributes = HashMap::new();
-        attributes.insert("column_int", AttributeType::Int(12));
-        attributes.insert("column_text", AttributeType::Text("executor".to_string()));
+        attributes.insert("column_int".to_string(), AttributeType::Int(12));
+        attributes.insert(
+            "column_text".to_string(),
+            AttributeType::Text("executor".to_string()),
+        );
 
         executor.insert(&attributes, table_name).unwrap();
 
