@@ -1,0 +1,19 @@
+{
+    "schemas": [
+        {
+            "table": {
+                "name": "test",
+                "columns": [
+                    {
+                        "types": "int",
+                        "name": "count"
+                    },
+                    {
+                        "types": "text",
+                        "name": "text"
+                    }
+                ]
+            }
+        }
+    ]
+}
